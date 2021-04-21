@@ -105,7 +105,7 @@ def compute_6s_coefs(wv_start, wv_end, bandpass, uw, uo3, sza, vza, alt, luta_in
     
     return np.array([ratm1, ratm2, ratm3]), tgtot, sastl, t_dwn_upl
 
-def test(sza = 10, vza = 15, luta_ind = 100):
+def test(sza = 10, vza = 15, luta_ind = 100, savefig=False):
     # read in 6S LUT
     f = np.load('atmospheric_transmittance_LUT.npz')
     gas_full_tables = np.array(f.f.gas_full_tables)
@@ -192,10 +192,12 @@ def test(sza = 10, vza = 15, luta_ind = 100):
     from matplotlib import gridspec
     import pylab as plt
     plt.rc('font', size=22) 
-    fig = plt.figure(figsize=(24,8))
-    gs = gridspec.GridSpec(1, 2, width_ratios=[3, 1]) 
-    ax0 = plt.subplot(gs[0])
-    ax1 = plt.subplot(gs[1])
+    fig = plt.figure(figsize=(30,16))
+    gs = gridspec.GridSpec(2, 3) 
+    ax0 = plt.subplot(gs[0, :])
+    ax1 = plt.subplot(gs[1, 0])
+    ax2 = plt.subplot(gs[1, 1])
+    ax3 = plt.subplot(gs[1, 2])
 
     ax0.plot(wv[:len(wv)], tgas[0][:len(wv)], '-+', lw=1, label = '6S transmittance')
     ax0.plot(wv[:len(wv)], tgas1, '--s', lw=1, ms=3, mew=0.5, mfc='none', label = 'Python code transmittance')
@@ -207,21 +209,59 @@ def test(sza = 10, vza = 15, luta_ind = 100):
     ax0.plot(wv[:len(wv)], ratms[:, 1], '-+', label = 'Python code path reflectance 2')
     ax0.plot(wv[:len(wv)], ratms[:, 2], '-', label = 'Python code path reflectance 3')
     ax0.plot(wv[:len(wv)], ratms[:, 1] - atmo_path[lutb_ind][:len(wv)], '-', ms=3, lw=2, label = 'Difference')
-    
 
-    ax1.plot(atmo_path[lutb_ind][:len(wv)], ratms[:, 1], 'o', ms=5)
-    ax1.set_xlabel('6S path reflectance')
-    ax1.set_ylabel('python code path reflectance')
-    # plt.xlim(0.2, 1.)
 
-    ax1.plot(tgas[0][:len(wv)], tgas1, 'o')
-    ax1.set_xlabel('6S transmittance')
-    ax1.set_ylabel('python code transmittance')
-    
-    ax0.legend(loc=10)
-    
+    ax1.plot(atmo_path[lutb_ind][:len(wv)], ratms[:, 1], 'o', ms=5, label = 'Path reflectance')
+
+
+    ax1.plot(tgas[0][:len(wv)], tgas1, 'o', label = 'Transmittance')
+    ax1.set_xlabel('6S')
+    ax1.set_ylabel('python code')
+
+
+
+    diff_gas   = tgas[0][:len(wv)] - tgas1
+    diff_atmo  = atmo_path[lutb_ind][:len(wv)] - ratms[:, 1]
+    rdiff_gas  = diff_gas / tgas[0][:len(wv)] 
+    rdiff_atmo = diff_atmo / atmo_path[lutb_ind][:len(wv)]
+
+    bins = 50
+    alpha = 0.6
+    frequency, xs = np.histogram(diff_gas, bins=bins)
+    xs = (xs[:-1] + xs[1:]) / 2
+    ax2.plot(xs, frequency, '-', label = 'Transmittance absolute difference')
+    ax2.fill_between(xs, frequency, np.zeros_like(frequency), alpha=alpha)
+
+
+    frequency, xs = np.histogram(diff_atmo, bins=bins)
+    xs = (xs[:-1] + xs[1:]) / 2
+    ax2.plot(xs, frequency, '-', label = 'Path reflectance absolute difference')
+    ax2.fill_between(xs, frequency, np.zeros_like(frequency), alpha=alpha)
+
+    ax2.vlines(0, ax2.get_ybound()[0], ax2.get_ybound()[1], 'k', ls='--', lw=2)
+
+    frequency, xs = np.histogram(rdiff_gas, bins=bins)
+    xs = (xs[:-1] + xs[1:]) / 2
+    ax3.plot(xs, frequency, '-', label = 'Transmittance relative difference')
+    ax3.fill_between(xs, frequency, np.zeros_like(frequency), alpha=alpha)
+
+    frequency, xs = np.histogram(rdiff_atmo, bins=bins)
+    xs = (xs[:-1] + xs[1:]) / 2
+    ax3.plot(xs, frequency, '-', label = 'Path reflectance relative difference')
+    ax3.fill_between(xs, frequency, np.zeros_like(frequency), alpha=alpha)
+
+    ax3.vlines(0, ax3.get_ybound()[0], ax3.get_ybound()[1], 'k', ls='--', lw=2)
+
+    ax0.legend(loc=1, fontsize=8)
+    ax1.legend(loc=4, fontsize=12)
+    ax2.legend(loc=2, fontsize=12)
+    ax3.legend(loc=2, fontsize=12)
+
     title = ' '.join([raa_aot2[luta_ind], 'sza:', str(sza), 'vza:', str(vza)])
+
     fig.suptitle(title, fontsize="x-large")
+    if savefig:
+        plt.savefig('TRUTHs_test_%d_%d_%d.png'%(sza, vza,luta_ind), dpi=100)
 
 if __name__ == '__main__':
     # test at arange of sun and view angles
