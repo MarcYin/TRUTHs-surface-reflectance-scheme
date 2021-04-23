@@ -105,7 +105,7 @@ def compute_6s_coefs(wv_start, wv_end, bandpass, uw, uo3, sza, vza, alt, luta_in
     
     return np.array([ratm1, ratm2, ratm3]), tgtot, sastl, t_dwn_upl
 
-def test(sza = 10, vza = 15, luta_ind = 100, savefig=False):
+def test_LUT_B_V2(sza = 10, vza = 15, luta_ind = 100, savefig=False):
     # read in 6S LUT
     f = np.load('atmospheric_transmittance_LUT.npz')
     gas_full_tables = np.array(f.f.gas_full_tables)
@@ -259,14 +259,180 @@ def test(sza = 10, vza = 15, luta_ind = 100, savefig=False):
 
     title = ' '.join([raa_aot2[luta_ind], 'sza:', str(sza), 'vza:', str(vza)])
 
-    fig.suptitle(title, fontsize="x-large")
+    fig.suptitle(title + ' LUT_B_V0.2', fontsize="x-large")
     if savefig:
         plt.savefig('TRUTHs_test_%d_%d_%d.png'%(sza, vza,luta_ind), dpi=100)
 
+def test_LUT_B_V3(sza = 10, vza = 15, luta_ind = 100, savefig=False):
+    # read in 6S LUT
+    f = np.load('atmospheric_transmittance_LUT.npz')
+    gas_full_tables = np.array(f.f.gas_full_tables)
+    us62_atmosphere_profile = np.array(f.f.us62_atmosphere_profile)
+    solar = f.f.solar
+    
+    # use solar and view angle for LUTA and LUTB filename
+    # read in LUT A version 3
+    fname = '/home/users/marcyin/nceo_ard/mix_000_V_1013_TRUTHSA_v0.3/LUT_TRUTHS_000_1013_%04.1f_%04.1f'%(sza, vza)
+    with open(fname, 'r') as f:
+        txt = f.read()
+    txt = txt.split('\n')
+
+    raa_aot2  = txt[11::6]
+    t_dwn_up = np.array([i.split() for i in txt[12::6]]).astype(float)
+    sast     = np.array([i.split() for i in txt[13::6]]).astype(float)
+    romix    = np.array([i.split() for i in txt[14::6]]).astype(float)
+    roray    = np.array([i.split() for i in txt[15::6]]).astype(float)
+    roaero   = np.array([i.split() for i in txt[16::6]]).astype(float)
+    
+    # read in LUT B version 2
+    fname = '/home/users/marcyin/nceo_ard/mix_000_V_1013_TRUTHSB_v0.3/LUT_TRUTHSB_000_1013_%04.1f_%04.1f'%(sza, vza)
+    with open(fname, 'r') as f:
+        txt = f.read()
+    txt = txt.split('\n')
+    raa_aot1  = txt[11::6]
+    atmo_path = np.array([i.split() for i in txt[12::6]]).astype(float)
+    tgas      = np.array([i.split() for i in txt[13::6]]).astype(float)
+    
+    # I have found the index for LUTB is half of LUTA
+    # which caused by the reduced resolution of LUTB
+    lutb_ind = int(luta_ind / 2)
+    
+    # set up the wavelength for TRUTHs
+    # ranging from 0.35 to 2.5 micro
+    wv = np.arange(0.350, 2.50 + 0.01, 0.01)
+    
+    # test altidude 0
+    alt = 0.0
+    # set water vapour and ozone to match
+    # LUTA and LUTB
+    uw, uo3 = 2.5, 0.35
+    
+    print(raa_aot2[luta_ind], 'sza: ', sza, 'vza: ', vza)
+    
+    ratms = []
+    tgas1 = []
+    
+    # set the bands corresponding to LUTB
+    # for zero width
+    step = 0.0025
+    for i in range(len(wv)):    
+        wv_start, wv_end = wv[i], wv[i]        
+        bandpass = np.ones(1)
+        
+        # compute the atmosphere path reflectance, total gas absorption transmittance
+        # spherical albedo, total scattering transmittance for up and down
+        ratm, tgtot, sastl, t_dwn_upl = compute_6s_coefs(wv_start, wv_end, bandpass, uw, uo3, sza, vza, alt, luta_ind, gas_full_tables, us62_atmosphere_profile, solar, roray, romix, sast, t_dwn_up)
+        
+        # get atmosphere path reflectance, total gas absorption transmittance
+        # for comparison with LUTB
+        
+        ratms.append(ratm)
+        tgas1.append(tgtot)
+    ratms = np.array(ratms)
+    tgas1 = np.array(tgas1)
+    
+    gas_diff = tgas[0][:len(wv)] - tgas1
+    ratm_diff = ratms[:, 1] - atmo_path[lutb_ind][:len(wv)]
+    
+    print('Gas absorption transmittance mean absolute difference: ', abs(gas_diff).mean())
+    print('Atmospheric path reflectance mean absolute difference: ',abs(ratm_diff).mean())
+    
+    # plot the comparison
+    from matplotlib import gridspec
+    import pylab as plt
+    plt.rc('font', size=22) 
+    fig = plt.figure(figsize=(30,16))
+    gs = gridspec.GridSpec(2, 3) 
+    ax0 = plt.subplot(gs[0, :])
+    ax1 = plt.subplot(gs[1, 0])
+    ax2 = plt.subplot(gs[1, 1])
+    ax3 = plt.subplot(gs[1, 2])
+
+    ax0.plot(wv[:len(wv)], tgas[0][:len(wv)], '-+', lw=1, label = '6S transmittance')
+    ax0.plot(wv[:len(wv)], tgas1, '--s', lw=1, ms=3, mew=0.5, mfc='none', label = 'Python code transmittance')
+    ax0.plot(wv[:len(wv)], tgas[0][:len(wv)] - tgas1, '-', ms=3, lw=2, label = 'Difference')
+    # ax0.legend()
+
+    ax0.plot(wv[:len(wv)], atmo_path[lutb_ind][:len(wv)], '-o',lw=1, ms=4, mew=0.5, mfc='none',label = 'LUTB path reflectance')
+    ax0.plot(wv[:len(wv)], ratms[:, 0], '-', label = 'Python code path reflectance 1')
+    ax0.plot(wv[:len(wv)], ratms[:, 1], '-+', label = 'Python code path reflectance 2')
+    ax0.plot(wv[:len(wv)], ratms[:, 2], '-', label = 'Python code path reflectance 3')
+    ax0.plot(wv[:len(wv)], ratms[:, 1] - atmo_path[lutb_ind][:len(wv)], '-', ms=3, lw=2, label = 'Difference')
+
+    ax1.plot(atmo_path[lutb_ind][:len(wv)], ratms[:, 1], 'o', ms=5, label = 'Path reflectance')
+
+    ax1.plot(tgas[0][:len(wv)], tgas1, 'o', label = 'Transmittance')
+    ax1.set_xlabel('6S')
+    ax1.set_ylabel('python code')
+
+    diff_gas   = tgas[0][:len(wv)] - tgas1
+    diff_atmo  = atmo_path[lutb_ind][:len(wv)] - ratms[:, 1]
+    rdiff_gas  = diff_gas / (tgas[0][:len(wv)]  + 1e-7)
+    rdiff_atmo = diff_atmo / (atmo_path[lutb_ind][:len(wv)] + 1e-7)
+
+    bins = 50
+    alpha = 0.6
+    hist_edge = 1e-3
+    frequency, xs = np.histogram(diff_gas, bins=bins, range = (-hist_edge, hist_edge))
+    xs = (xs[:-1] + xs[1:]) / 2
+    ax2.plot(xs, frequency, '-', label = 'Transmittance absolute difference')
+    ax2.fill_between(xs, frequency, np.zeros_like(frequency), alpha=alpha)
+    
+    frequency, xs = np.histogram(diff_atmo, bins=bins, range = (-hist_edge, hist_edge))
+    xs = (xs[:-1] + xs[1:]) / 2
+    ax2.plot(xs, frequency, '-', label = 'Path reflectance absolute difference')
+    ax2.fill_between(xs, frequency, np.zeros_like(frequency), alpha=alpha)
+
+    ax2.vlines(0, ax2.get_ybound()[0], ax2.get_ybound()[1], 'k', ls='--', lw=2)
+
+    ax2.set_xticks(xs[::10])
+    ax2.set_xticklabels(['%.2e'% iiii for iiii in xs[::10]], rotation=45)
+    
+    
+    frequency, xs = np.histogram(rdiff_gas, bins=bins, range = (-hist_edge, hist_edge))
+    xs = (xs[:-1] + xs[1:]) / 2
+    ax3.plot(xs, frequency, '-', label = 'Transmittance relative difference')
+    ax3.fill_between(xs, frequency, np.zeros_like(frequency), alpha=alpha)
+
+    frequency, xs = np.histogram(rdiff_atmo, bins=bins, range = (-hist_edge, hist_edge))
+    xs = (xs[:-1] + xs[1:]) / 2
+    ax3.plot(xs, frequency, '-', label = 'Path reflectance relative difference')
+    ax3.fill_between(xs, frequency, np.zeros_like(frequency), alpha=alpha)
+    ax3.vlines(0, ax3.get_ybound()[0], ax3.get_ybound()[1], 'k', ls='--', lw=2)
+    
+    ax3.set_xticks(xs[::10])
+    ax3.set_xticklabels(['%.2e'% iiii for iiii in xs[::10]], rotation=45)
+    
+    ax0.legend(loc=1, fontsize=8)
+    ax1.legend(loc=4, fontsize=12)
+    ax2.legend(loc=2, fontsize=12)
+    ax3.legend(loc=2, fontsize=12)
+
+    title = ' '.join([raa_aot2[luta_ind], 'sza:', str(sza), 'vza:', str(vza)])
+
+    fig.suptitle(title + ' LUT_B_V0.3', fontsize="x-large")
+    if savefig:
+        plt.savefig('TRUTHs_test_LUT_B_V0.3_%d_%d_%d.png'%(sza, vza,luta_ind), dpi=100)
 if __name__ == '__main__':
     # test at arange of sun and view angles
     # with some different aot and raa 
     luta_inds = np.arange(0, 240, 20).reshape(4,3)
+    
+    
+    print('------------------------------------------------------------------------------------------------')
+    print('---------------------------------Testing LUT_B_V0.2---------------------------------------------')
+    print('------------------------------------------------------------------------------------------------')
+    
     for i, sza in enumerate(np.arange(0, 80, 20)):
         for j, vza in enumerate(np.arange(0, 60, 20)):
-            test(sza, vza, luta_ind=luta_inds[i, j]) 
+            test_LUT_B_V2(sza, vza, luta_ind=luta_inds[i, j]) 
+    
+    print('------------------------------------------------------------------------------------------------')
+    print('---------------------------------Testing LUT_B_V0.3---------------------------------------------')
+    print('------------------------------------------------------------------------------------------------')
+    
+    
+    for i, sza in enumerate(np.arange(0, 80, 20)):
+        for j, vza in enumerate(np.arange(0, 60, 20)):
+            test_LUT_B_V3(sza, vza, luta_ind=luta_inds[i, j]) 
+
