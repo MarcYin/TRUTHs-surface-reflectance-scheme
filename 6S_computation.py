@@ -102,6 +102,8 @@ def compute_6s_coefs(wv_start, wv_end, bandpass, uw, uo3, sza, vza, alt, luta_in
     ratm2 = np.sum(ratm2 * coefs) / coefs.sum()
     ratm3 = np.sum(ratm3 * coefs) / coefs.sum()
     tgtot = (tgtot * coefs).sum() / coefs.sum()
+    sastl = (sastl * coefs).sum() / coefs.sum()
+    t_dwn_upl = (t_dwn_upl * coefs).sum() / coefs.sum()
     
     return np.array([ratm1, ratm2, ratm3]), tgtot, sastl, t_dwn_upl
 
@@ -413,26 +415,136 @@ def test_LUT_B_V3(sza = 10, vza = 15, luta_ind = 100, savefig=False):
     fig.suptitle(title + ' LUT_B_V0.3', fontsize="x-large")
     if savefig:
         plt.savefig('TRUTHs_test_LUT_B_V0.3_%d_%d_%d.png'%(sza, vza,luta_ind), dpi=100)
+
+def test_LUT_CD(pt_num):
+    
+    print('****************************************************************************************************************************************************************************')
+    print('\nTesting pt: %d \n'%pt_num)
+    print('****************************************************************************************************************************************************************************')
+    
+    fname = '/home/users/kjpearson/LUT_TRUTHS_test/TRUTHSD_v0.3/LUT_TRUTHSD_pt%d'%pt_num
+    with open(fname, 'r') as f:
+        txt = f.read()
+    txt = txt.split('\n')
+
+    LUT_TRUTHSD_config  = txt[5:-1:6]
+    t_dwn_up = np.array([i.split() for i in txt[6::6]]).astype(float)
+    sast     = np.array([i.split() for i in txt[7::6]]).astype(float)
+    romix    = np.array([i.split() for i in txt[8::6]]).astype(float)
+    roray    = np.array([i.split() for i in txt[9::6]]).astype(float)
+    roaero   = np.array([i.split() for i in txt[10::6]]).astype(float)
+
+
+    fname = '/home/users/kjpearson/LUT_TRUTHS_test/TRUTHSC_v0.3/LUT_TRUTHSC_pt%d'%pt_num
+    with open(fname, 'r') as f:
+        txt = f.read()
+    txt = txt.split('\n')
+
+    LUT_TRUTHSC_config = txt[5:-1:5]
+    atmo_path = np.array([i.split() for i in txt[6::5]]).astype(float)
+    tgas      = np.array([i.split() for i in txt[7::5]]).astype(float)
+    tt        = np.array([i.split() for i in txt[8::5]]).astype(float)
+    sat        = np.array([i.split() for i in txt[9::5]]).astype(float)
+
+
+    f = np.load('atmospheric_transmittance_LUT.npz')
+    gas_full_tables = np.array(f.f.gas_full_tables)
+    us62_atmosphere_profile = np.array(f.f.us62_atmosphere_profile)
+    solar = f.f.solar
+
+    for luta_ind in range(len(LUT_TRUTHSC_config)):
+        lutb_ind = luta_ind
+        wv = np.arange(0.350, 2.50 + 0.01, 0.01)
+
+        paras = LUT_TRUTHSC_config[luta_ind].split()[1::2]
+        vals  = LUT_TRUTHSC_config[luta_ind].split()[2::2]
+        para_dict = dict(zip(paras, np.array(vals).astype(float)))
+
+        print('-----------------------------------------------------------------------------------------------------------------------------------------------------------')
+        print(para_dict)
+        print('-----------------------------------------------------------------------------------------------------------------------------------------------------------')
+
+        sza, vza, alt, uw, uo3 = para_dict['SZA'], para_dict['VZA'], para_dict['PRES'], para_dict['WV'], para_dict['O3']
+
+        ratms = []
+        tgas1 = []
+        sasts = []
+        t_dwn_ups = []
+        # set the bands corresponding to LUTB
+        # wv +-0.005
+        step = 0.0025
+        for i in range(len(wv)):    
+            wv_start, wv_end = wv[i] - 0.005, wv[i] + 0.005
+            iinf = (wv_start-.25)/step+1.5
+            isup = (wv_end  -.25)/step+1.5        
+
+            bandpass = np.ones(int(isup) - int(iinf) + 1)
+
+            # 6S internal change the first and last bandpass to 0.5
+            # when mono bandpass used
+            bandpass[0]  = 0.5
+            bandpass[-1] = 0.5
+
+            # compute the atmosphere path reflectance, total gas absorption transmittance
+            # spherical albedo, total scattering transmittance for up and down
+            ratm, tgtot, sastl, t_dwn_upl = compute_6s_coefs(wv_start, wv_end, bandpass, uw, uo3, sza, vza, alt, luta_ind, gas_full_tables.copy(), 
+                                                             us62_atmosphere_profile.copy(), solar.copy(), roray.copy(), romix.copy(), sast.copy(), t_dwn_up.copy())
+
+            # get atmosphere path reflectance, total gas absorption transmittance, spherical albedo and total
+            # scattering transmittance for comparison with LUTC
+            ratms.append(ratm)
+            tgas1.append(tgtot)
+            sasts.append(sastl)
+            t_dwn_ups.append(t_dwn_upl)
+
+        ratms = np.array(ratms)
+        tgas1 = np.array(tgas1)
+        sasts = np.array(sasts)
+        t_dwn_ups = np.array(t_dwn_ups)
+
+
+        gas_diff      = tgas[lutb_ind][:len(wv)] - tgas1
+        ratm_diff     = atmo_path[lutb_ind][:len(wv)] - ratms[:, 1]
+        sasts_diff    = sat[lutb_ind, :len(wv)] - sasts
+        t_dwn_up_diff = tt[lutb_ind, :len(wv)] - t_dwn_ups 
+
+
+        print('Gas absorption transmittance mean absolute difference   : %.4e'%abs(gas_diff).mean())
+        print('Atmospheric path reflectance mean absolute difference   : %.4e'%abs(ratm_diff).mean())
+        print('Total scattering transmittance mean absolute difference : %.4e'%abs(t_dwn_up_diff).mean())
+        print('Spherical albedo mean absolute difference               : %.4e'%abs(sasts_diff).mean())
+
+        print('\n')
+
+        print('Gas absorption transmittance max absolute difference    : %.4e'%abs(gas_diff).max())
+        print('Atmospheric path reflectance max absolute difference    : %.4e'%abs(ratm_diff).max())
+        print('Total scattering transmittance max absolute difference  : %.4e'%abs(t_dwn_up_diff).max())
+        print('Spherical albedo max absolute difference                : %.4e'%abs(sasts_diff).max())
+
+        print('\n')
+        
 if __name__ == '__main__':
     # test at arange of sun and view angles
     # with some different aot and raa 
-    luta_inds = np.arange(0, 240, 20).reshape(4,3)
+#     luta_inds = np.arange(0, 240, 20).reshape(4,3)
     
     
-    print('------------------------------------------------------------------------------------------------')
-    print('---------------------------------Testing LUT_B_V0.2---------------------------------------------')
-    print('------------------------------------------------------------------------------------------------')
+#     print('------------------------------------------------------------------------------------------------')
+#     print('---------------------------------Testing LUT_B_V0.2---------------------------------------------')
+#     print('------------------------------------------------------------------------------------------------')
     
-    for i, sza in enumerate(np.arange(0, 80, 20)):
-        for j, vza in enumerate(np.arange(0, 60, 20)):
-            test_LUT_B_V2(sza, vza, luta_ind=luta_inds[i, j]) 
+#     for i, sza in enumerate(np.arange(0, 80, 20)):
+#         for j, vza in enumerate(np.arange(0, 60, 20)):
+#             test_LUT_B_V2(sza, vza, luta_ind=luta_inds[i, j]) 
     
-    print('------------------------------------------------------------------------------------------------')
-    print('---------------------------------Testing LUT_B_V0.3---------------------------------------------')
-    print('------------------------------------------------------------------------------------------------')
+#     print('------------------------------------------------------------------------------------------------')
+#     print('---------------------------------Testing LUT_B_V0.3---------------------------------------------')
+#     print('------------------------------------------------------------------------------------------------')
     
     
-    for i, sza in enumerate(np.arange(0, 80, 20)):
-        for j, vza in enumerate(np.arange(0, 60, 20)):
-            test_LUT_B_V3(sza, vza, luta_ind=luta_inds[i, j]) 
+#     for i, sza in enumerate(np.arange(0, 80, 20)):
+#         for j, vza in enumerate(np.arange(0, 60, 20)):
+#             test_LUT_B_V3(sza, vza, luta_ind=luta_inds[i, j]) 
 
+    for pt_num in range(1,11):
+        test_LUT_CD(pt_num)
