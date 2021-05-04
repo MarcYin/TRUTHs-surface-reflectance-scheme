@@ -422,7 +422,7 @@ def test_LUT_CD(pt_num):
     print('\nTesting pt: %d \n'%pt_num)
     print('****************************************************************************************************************************************************************************')
     
-    fname = '/home/users/kjpearson/LUT_TRUTHS_test/TRUTHSD_v0.3/LUT_TRUTHSD_pt%d'%pt_num
+    fname = '/home/users/kjpearson/LUT_TRUTHS_test/TRUTHSD_v0.4/LUT_TRUTHSD_pt%d'%pt_num
     with open(fname, 'r') as f:
         txt = f.read()
     txt = txt.split('\n')
@@ -435,7 +435,7 @@ def test_LUT_CD(pt_num):
     roaero   = np.array([i.split() for i in txt[10::6]]).astype(float)
 
 
-    fname = '/home/users/kjpearson/LUT_TRUTHS_test/TRUTHSC_v0.3/LUT_TRUTHSC_pt%d'%pt_num
+    fname = '/home/users/kjpearson/LUT_TRUTHS_test/TRUTHSC_v0.4/LUT_TRUTHSC_pt%d'%pt_num
     with open(fname, 'r') as f:
         txt = f.read()
     txt = txt.split('\n')
