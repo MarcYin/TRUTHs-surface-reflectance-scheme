@@ -508,6 +508,17 @@ def test_LUT_CD(pt_num):
         sasts_diff    = sat[lutb_ind, :len(wv)] - sasts
         t_dwn_up_diff = tt[lutb_ind, :len(wv)] - t_dwn_ups 
 
+        gas_frac_diff = gas_diff/tgas1
+        ratm_frac_diff     = ratm_diff /ratms[:, 1]
+        sasts_frac_diff    = sasts_diff / sasts
+        t_dwn_up_frac_diff = t_dwn_up_diff / t_dwn_ups 
+
+        print('Gas absorption transmittance mean fractional difference    : %.4e'%abs(gas_frac_diff).mean())
+        print('Atmospheric path reflectance mean fractional difference    : %.4e'%abs(ratm_frac_diff).mean())
+        print('Total scattering transmittance mean fractional difference  : %.4e'%abs(t_dwn_up_frac_diff).mean())
+        print('Spherical albedo mean fractional difference                : %.4e'%abs(sasts_frac_diff).mean())
+
+        print('\n')
 
         print('Gas absorption transmittance mean absolute difference   : %.4e'%abs(gas_diff).mean())
         print('Atmospheric path reflectance mean absolute difference   : %.4e'%abs(ratm_diff).mean())
